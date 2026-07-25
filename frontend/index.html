@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>DeFi Yield Optimizer — Arc Testnet</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0b1020;
+    --card: #131a2e;
+    --accent: #4fd1c5;
+    --accent2: #a855f7;
+    --text: #e8ecf5;
+    --muted: #8a93ab;
+    --danger: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(circle at top left, #1a2340, var(--bg));
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 20px;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; }
+  h1 { font-size: 28px; margin-bottom: 4px; }
+  .sub { color: var(--muted); margin-bottom: 28px; }
+  .card {
+    background: var(--card);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    padding: 22px 24px;
+    margin-bottom: 20px;
+  }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .row > .card { flex: 1; min-width: 240px; }
+  label { display:block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: #0d1424;
+    color: var(--text);
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+  button {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none;
+    color: #0b1020;
+    font-weight: 600;
+    padding: 11px 18px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button.secondary {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--text);
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .strategy-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .strategy-row:last-child { border-bottom: none; }
+  .apy { color: var(--accent); font-weight: 700; }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(79,209,197,0.15);
+    color: var(--accent);
+    margin-left: 8px;
+  }
+  #status { font-size: 13px; color: var(--muted); margin-top: 10px; min-height: 18px; }
+  .stat { text-align: center; flex: 1; }
+  .stat .num { font-size: 22px; font-weight: 700; }
+  .stat .label { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🌀 DeFi Yield Optimizer</h1>
+  <p class="sub">Automated USDC rebalancing across Aave, Compound, Uniswap &amp; Curve — built on Circle's Arc L1.</p>
+
+  <div class="card">
+    <button id="connectBtn">Connect Wallet</button>
+    <span id="account" style="margin-left:12px; color: var(--muted); font-size: 13px;"></span>
+  </div>
+
+  <div class="card">
+    <label for="vaultAddress">Vault contract address</label>
+    <input id="vaultAddress" placeholder="0x... (paste your deployed YieldOptimizerVault address)" />
+    <label for="usdcAddress">USDC token address (Arc testnet)</label>
+    <input id="usdcAddress" placeholder="0x... (Arc testnet USDC address)" />
+    <button id="loadBtn" class="secondary">Load Vault Data</button>
+    <div id="status"></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div class="stat"><div class="num" id="totalAssets">–</div><div class="label">Total Assets (USDC)</div></div>
+      <div class="stat"><div class="num" id="myBalance">–</div><div class="label">My Balance (USDC)</div></div>
+      <div class="stat"><div class="num" id="bestApy">–</div><div class="label">Best Current APY</div></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h3>Deposit</h3>
+      <label for="depositAmount">Amount (USDC)</label>
+      <input id="depositAmount" type="number" placeholder="100" />
+      <button id="depositBtn">Approve + Deposit</button>
+    </div>
+    <div class="card">
+      <h3>Withdraw</h3>
+      <label for="withdrawShares">Shares to redeem</label>
+      <input id="withdrawShares" type="number" placeholder="e.g. 50" />
+      <button id="withdrawBtn">Withdraw</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Strategies <span class="badge">live APY</span></h3>
+    <div id="strategyList">Load vault data to see strategies…</div>
+    <div style="margin-top:16px;">
+      <button id="rebalanceBtn" class="secondary">⚡ Rebalance to Best APY</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const VAULT_ABI = [
+  "function deposit(uint256 amount) returns (uint256)",
+  "function withdraw(uint256 shareAmount) returns (uint256)",
+  "function totalAssets() view returns (uint256)",
+  "function balanceOf(address user) view returns (uint256)",
+  "function sharesOf(address) view returns (uint256)",
+  "function getStrategyData() view returns (address[] addrs, string[] names, uint256[] apyBps, uint256[] balances)",
+  "function rebalance(uint256 minImprovementBps) returns (bool)"
+];
+const ERC20_ABI = [
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function decimals() view returns (uint8)",
+  "function balanceOf(address) view returns (uint256)"
+];
+
+let provider, signer, vault, usdc, decimals = 6;
+
+const statusEl = document.getElementById('status');
+function setStatus(msg, isError=false) {
+  statusEl.textContent = msg;
+  statusEl.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+}
+
+document.getElementById('connectBtn').onclick = async () => {
+  if (!window.ethereum) { setStatus('No wallet found — install MetaMask.', true); return; }
+  provider = new ethers.BrowserProvider(window.ethereum);
+  await provider.send("eth_requestAccounts", []);
+  signer = await provider.getSigner();
+  const addr = await signer.getAddress();
+  document.getElementById('account').textContent = addr.slice(0,6) + '…' + addr.slice(-4);
+  setStatus('Wallet connected. Now paste the vault + USDC addresses and click "Load Vault Data".');
+};
+
+document.getElementById('loadBtn').onclick = async () => {
+  try {
+    if (!signer) { setStatus('Connect your wallet first.', true); return; }
+    const vaultAddr = document.getElementById('vaultAddress').value.trim();
+    const usdcAddr = document.getElementById('usdcAddress').value.trim();
+    vault = new ethers.Contract(vaultAddr, VAULT_ABI, signer);
+    usdc = new ethers.Contract(usdcAddr, ERC20_ABI, signer);
+    decimals = await usdc.decimals();
+    await refresh();
+    setStatus('Vault data loaded.');
+  } catch (e) {
+    setStatus('Failed to load vault: ' + (e.reason || e.message), true);
+  }
+};
+
+async function refresh() {
+  const addr = await signer.getAddress();
+  const total = await vault.totalAssets();
+  const mine = await vault.balanceOf(addr);
+  document.getElementById('totalAssets').textContent = ethers.formatUnits(total, decimals);
+  document.getElementById('myBalance').textContent = ethers.formatUnits(mine, decimals);
+
+  const [addrs, names, apyBpsArr, balances] = await vault.getStrategyData();
+  const listEl = document.getElementById('strategyList');
+  listEl.innerHTML = '';
+  let best = 0;
+  for (let i = 0; i < addrs.length; i++) {
+    const apyPct = (Number(apyBpsArr[i]) / 100).toFixed(2);
+    best = Math.max(best, Number(apyBpsArr[i]));
+    const bal = ethers.formatUnits(balances[i], decimals);
+    const row = document.createElement('div');
+    row.className = 'strategy-row';
+    row.innerHTML = `<span>${names[i]}</span><span>${bal} USDC &nbsp; <span class="apy">${apyPct}% APY</span></span>`;
+    listEl.appendChild(row);
+  }
+  document.getElementById('bestApy').textContent = (best/100).toFixed(2) + '%';
+}
+
+document.getElementById('depositBtn').onclick = async () => {
+  try {
+    const amountStr = document.getElementById('depositAmount').value;
+    if (!amountStr) return;
+    const amount = ethers.parseUnits(amountStr, decimals);
+    setStatus('Approving USDC…');
+    const approveTx = await usdc.approve(await vault.getAddress(), amount);
+    await approveTx.wait();
+    setStatus('Depositing…');
+    const depositTx = await vault.deposit(amount);
+    await depositTx.wait();
+    setStatus('Deposit confirmed!');
+    await refresh();
+  } catch (e) {
+    setStatus('Deposit failed: ' + (e.reason || e.message), true);
+  }
+};
+
+document.getElementById('withdrawBtn').onclick = async () => {
+  try {
+    const sharesStr = document.getElementById('withdrawShares').value;
+    if (!sharesStr) return;
+    const shares = ethers.parseUnits(sharesStr, decimals);
+    setStatus('Withdrawing…');
+    const tx = await vault.withdraw(shares);
+    await tx.wait();
+    setStatus('Withdraw confirmed!');
+    await refresh();
+  } catch (e) {
+    setStatus('Withdraw failed: ' + (e.reason || e.message), true);
+  }
+};
+
+document.getElementById('rebalanceBtn').onclick = async () => {
+  try {
+    setStatus('Rebalancing to best APY…');
+    const tx = await vault.rebalance(10); // require at least 0.10% improvement
+    await tx.wait();
+    setStatus('Rebalance complete!');
+    await refresh();
+  } catch (e) {
+    setStatus('Rebalance failed (maybe no improvement available): ' + (e.reason || e.message), true);
+  }
+};
+</script>
+</body>
+</html>
