@@ -1,0 +1,14 @@
+{
+  "name": "defi-yield-optimizer",
+  "version": "1.0.0",
+  "description": "DeFi Yield Optimizer - automated USDC yield rebalancer built on Circle's Arc L1 (Encode Programmable Money Hackathon)",
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy:arc": "hardhat run scripts/deploy.js --network arcTestnet"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "hardhat": "^2.22.0"
+  }
+}
