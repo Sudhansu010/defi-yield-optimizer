@@ -1,4 +1,5 @@
 # DeFi Yield Optimizer
+**🔗 Live Demo:** https://sudhansu010.github.io/defi-yield-optimizer/frontend/
 
 > Built for Encode Club's **Programmable Money Hackathon** on Circle's **Arc L1**
 > Track: **DeFi**
