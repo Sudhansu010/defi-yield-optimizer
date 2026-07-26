@@ -99,9 +99,9 @@
 
   <div class="card">
     <label for="vaultAddress">Vault contract address</label>
-    <input id="vaultAddress" placeholder="0x... (paste your deployed YieldOptimizerVault address)" />
+    <input id="vaultAddress" value="0xa118A34483B0072Ef7B5A38BB4c32c75A01A9a3b" placeholder="0x... (paste your deployed YieldOptimizerVault address)" />
     <label for="usdcAddress">USDC token address (Arc testnet)</label>
-    <input id="usdcAddress" placeholder="0x... (Arc testnet USDC address)" />
+    <input id="usdcAddress" value="0x3600000000000000000000000000000000000000" placeholder="0x... (Arc testnet USDC address)" />
     <button id="loadBtn" class="secondary">Load Vault Data</button>
     <div id="status"></div>
   </div>
@@ -181,7 +181,6 @@ async function ensureArcTestnet() {
       params: [{ chainId: ARC_TESTNET_CHAIN_ID_HEX }]
     });
   } catch (switchError) {
-    // 4902 = chain not added to this wallet yet
     if (switchError.code === 4902) {
       await window.ethereum.request({
         method: 'wallet_addEthereumChain',
@@ -208,7 +207,7 @@ document.getElementById('connectBtn').onclick = async () => {
   document.getElementById('account').textContent = addr.slice(0,6) + '…' + addr.slice(-4);
 
   const network = await provider.getNetwork();
-  setStatus(`Wallet connected. Chain ID: ${network.chainId} (expected 5042002). Now paste addresses and click "Load Vault Data".`);
+  setStatus(`Wallet connected. Chain ID: ${network.chainId} (expected 5042002). Now click "Load Vault Data".`);
 };
 
 document.getElementById('loadBtn').onclick = async () => {
@@ -312,7 +311,7 @@ document.getElementById('withdrawBtn').onclick = async () => {
 document.getElementById('rebalanceBtn').onclick = async () => {
   try {
     setStatus('Rebalancing to best APY…');
-    const tx = await vault.rebalance(10); // require at least 0.10% improvement
+    const tx = await vault.rebalance(10);
     await tx.wait();
     setStatus('Rebalance complete!');
     await refresh();
