@@ -165,16 +165,50 @@ function setStatus(msg, isError=false) {
   statusEl.style.color = isError ? 'var(--danger)' : 'var(--muted)';
 }
 
+const ARC_TESTNET_CHAIN_ID_HEX = '0x4cef52'; // 5042002
+const ARC_TESTNET_PARAMS = {
+  chainId: ARC_TESTNET_CHAIN_ID_HEX,
+  chainName: 'Arc Testnet',
+  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
+  rpcUrls: ['https://rpc.testnet.arc.network'],
+  blockExplorerUrls: ['https://testnet.arcscan.app']
+};
+
+async function ensureArcTestnet() {
+  try {
+    await window.ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: ARC_TESTNET_CHAIN_ID_HEX }]
+    });
+  } catch (switchError) {
+    // 4902 = chain not added to this wallet yet
+    if (switchError.code === 4902) {
+      await window.ethereum.request({
+        method: 'wallet_addEthereumChain',
+        params: [ARC_TESTNET_PARAMS]
+      });
+    } else {
+      throw switchError;
+    }
+  }
+}
+
 document.getElementById('connectBtn').onclick = async () => {
   if (!window.ethereum) { setStatus('No wallet found — install MetaMask.', true); return; }
-  // batchMaxCount: 1 disables JSON-RPC request batching, which some RPC
-  // endpoints (including Arc's) don't support well through injected wallets.
+  try {
+    await ensureArcTestnet();
+  } catch (e) {
+    setStatus('Please switch to Arc Testnet in MetaMask to continue.', true);
+    return;
+  }
   provider = new ethers.BrowserProvider(window.ethereum, undefined, { batchMaxCount: 1 });
   await provider.send("eth_requestAccounts", []);
   signer = await provider.getSigner();
   const addr = await signer.getAddress();
   document.getElementById('account').textContent = addr.slice(0,6) + '…' + addr.slice(-4);
-  setStatus('Wallet connected. Now paste the vault + USDC addresses and click "Load Vault Data".');
+
+  const network = await provider.getNetwork();
+  setStatus(`Wallet connected. Chain ID: ${network.chainId} (expected 5042002). Now paste addresses and click "Load Vault Data".`);
 };
 
 document.getElementById('loadBtn').onclick = async () => {
@@ -184,7 +218,13 @@ document.getElementById('loadBtn').onclick = async () => {
     const usdcAddr = document.getElementById('usdcAddress').value.trim();
     vault = new ethers.Contract(vaultAddr, VAULT_ABI, signer);
     usdc = new ethers.Contract(usdcAddr, ERC20_ABI, signer);
-    // decimals is hardcoded to 6 above — Arc's USDC ERC-20 interface always uses 6.
+
+    const code = await provider.getCode(vaultAddr);
+    if (code === '0x' || code === '0x0') {
+      setStatus(`No contract code found at ${vaultAddr} on this network — check you're on Arc Testnet (chain ID 5042002) and the address is correct.`, true);
+      return;
+    }
+
     await refresh();
     setStatus('Vault data loaded.');
   } catch (e) {
